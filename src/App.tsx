@@ -55,7 +55,7 @@ export default function App() {
   const [localItinerary, setLocalItinerary] = useState<ItineraryDay[]>([]);
 
   const fetchSuggestions = async (query: string, type: 'origin' | 'dest') => {
-    if (query.length < 2) {
+    if (query.length < 3) {
       type === 'origin' ? setOriginSuggestions([]) : setDestSuggestions([]);
       return;
     }
@@ -68,14 +68,14 @@ export default function App() {
   useEffect(() => {
     const timer = setTimeout(() => {
       if (origin && showOriginSuggestions) fetchSuggestions(origin, 'origin');
-    }, 400);
+    }, 800);
     return () => clearTimeout(timer);
   }, [origin, showOriginSuggestions]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
       if (destination && showDestSuggestions) fetchSuggestions(destination, 'dest');
-    }, 400);
+    }, 800);
     return () => clearTimeout(timer);
   }, [destination, showDestSuggestions]);
 
@@ -134,11 +134,15 @@ export default function App() {
       window.scrollTo({ top: 0, behavior: 'smooth' });
     } catch (err: any) {
       console.error('Trigger Analysis Error:', err);
-      // Check if it's an API key error
-      if (err?.message?.includes('API_KEY_INVALID') || err?.message?.includes('401')) {
+      
+      const errorMessage = err?.message || '';
+      
+      if (errorMessage.includes('RESOURCE_EXHAUSTED') || errorMessage.includes('429')) {
+        setError('Quota Exceeded: You have reached the Gemini API rate limit. Please wait a minute or check your AI Studio console usage limits.');
+      } else if (errorMessage.includes('API_KEY_INVALID') || errorMessage.includes('401')) {
         setError('Invalid API Key. Please verify your GEMINI_API_KEY in GitHub Secrets.');
       } else {
-        setError(err?.message || 'Failed to fetch optimized data. Please check your inputs and try again.');
+        setError(errorMessage || 'Failed to fetch optimized data. Please check your inputs and try again.');
       }
     } finally {
       setLoading(false);

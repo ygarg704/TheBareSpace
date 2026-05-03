@@ -77,16 +77,20 @@ export async function getTravelAnalysis(destination: string, origin: string) {
     4. HYPERLINK every location/landmark in the 'activities' field to a Google Maps search URL.
     5. Ensure the pricing and recommendations are contextually relative to someone traveling from ${origin}.`;
 
-  const result = await ai.models.generateContent({
-    model: "gemini-3-flash-preview",
+  const model = ai.getGenerativeModel({ 
+    model: "gemini-1.5-flash",
+    tools: [{ googleSearch: {} }] as any
+  });
+
+  const result = await model.generateContent({
     contents: [{ parts: [{ text: prompt }] }],
-    config: {
+    generationConfig: {
       responseMimeType: "application/json",
-      tools: [{ googleSearch: {} }],
     },
   });
 
-  return JSON.parse(result.text || "{}");
+  const response = await result.response;
+  return JSON.parse(response.text() || "{}");
 }
 
 export async function getOptimizedItinerary(destination: string, days: number) {
@@ -105,16 +109,20 @@ export async function getOptimizedItinerary(destination: string, days: number) {
 
     Hyperlink every location/landmark to its Google Maps search result.`;
 
-  const result = await ai.models.generateContent({
-    model: "gemini-3-flash-preview",
+  const model = ai.getGenerativeModel({ 
+    model: "gemini-1.5-flash",
+    tools: [{ googleSearch: {} }] as any
+  });
+
+  const result = await model.generateContent({
     contents: [{ parts: [{ text: prompt }] }],
-    config: {
+    generationConfig: {
       responseMimeType: "application/json",
-      tools: [{ googleSearch: {} }],
     },
   });
 
-  return JSON.parse(result.text || "[]");
+  const response = await result.response;
+  return JSON.parse(response.text() || "[]");
 }
 
 export async function getLocationSuggestions(query: string) {
@@ -126,14 +134,15 @@ export async function getLocationSuggestions(query: string) {
     Return ONLY a JSON array of strings, e.g., ["London, United Kingdom", "Paris, France"].`;
   
   try {
-    const result = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
+    const model = ai.getGenerativeModel({ model: "gemini-1.5-flash" });
+    const result = await model.generateContent({
       contents: [{ parts: [{ text: prompt }] }],
-      config: {
+      generationConfig: {
         responseMimeType: "application/json",
       },
     });
-    return JSON.parse(result.text || "[]");
+    const response = await result.response;
+    return JSON.parse(response.text() || "[]");
   } catch (err) {
     console.error("Suggestions error:", err);
     return [];
@@ -142,18 +151,19 @@ export async function getLocationSuggestions(query: string) {
 
 export async function getDestinationImage(destination: string) {
   try {
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash-image',
-      contents: {
+    const model = ai.getGenerativeModel({ model: 'gemini-1.5-flash' });
+    const response = await model.generateContent({
+      contents: [{
         parts: [
           {
             text: `A cinematic, high-end travel photography style image of ${destination}. Luxury travel vibe, clear weather, stunning landscape or iconic landmark. No text, no people.`,
           },
         ],
-      },
+      }],
     });
 
-    for (const part of response.candidates?.[0]?.content?.parts || []) {
+    const result = await response.response;
+    for (const part of result.candidates?.[0]?.content?.parts || []) {
       if (part.inlineData) {
         return `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
       }
