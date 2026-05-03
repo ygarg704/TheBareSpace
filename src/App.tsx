@@ -68,7 +68,7 @@ export default function App() {
       if (localItinerary.length !== visibleDays) {
         reloadItinerary();
       }
-    }, 1000); // 1 second debounce
+    }, 2000); // 2 second debounce to prevent rapid sequential hits
 
     return () => clearTimeout(timer);
   }, [visibleDays, destination, analysis]);
@@ -82,21 +82,21 @@ export default function App() {
     setImageUrl(null);
     
     try {
-      // Run analysis and image generation in parallel
-      // We handle image failure independently so it doesn't block the main analysis
-      const analysisPromise = getTravelAnalysis(targetDest, targetOrigin);
-      const imagePromise = getDestinationImage(targetDest).catch(err => {
-        console.warn('Image generation failed (non-critical):', err);
-        return null;
-      });
-
-      const [data, img] = await Promise.all([analysisPromise, imagePromise]);
+      // Run analysis first
+      const data = await getTravelAnalysis(targetDest, targetOrigin);
       
       setAnalysis(data);
       setVisibleDays(data.estimatedDays || 7);
       setLocalItinerary(data.itinerary);
-      setImageUrl(img);
-      // Ensure we scroll up to see the new results
+      
+      // Load image second to avoid simultaneous hits
+      try {
+        const img = await getDestinationImage(targetDest);
+        setImageUrl(img);
+      } catch (imgErr) {
+        console.warn('Non-critical image load failure:', imgErr);
+      }
+
       window.scrollTo({ top: 0, behavior: 'smooth' });
     } catch (err: any) {
       console.error('Trigger Analysis Error:', err);

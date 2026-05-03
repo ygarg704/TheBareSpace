@@ -77,16 +77,21 @@ export async function getTravelAnalysis(destination: string, origin: string) {
     4. HYPERLINK every location/landmark in the 'activities' field to a Google Maps search URL.
     5. Ensure the pricing and recommendations are contextually relative to someone traveling from ${origin}.`;
 
-  const result = await ai.models.generateContent({
-    model: "gemini-3-flash-preview",
-    contents: [{ parts: [{ text: prompt }] }],
-    config: {
-      responseMimeType: "application/json",
-      tools: [{ googleSearch: {} }],
-    },
-  });
+  try {
+    const result = await ai.models.generateContent({
+      model: "gemini-3-flash-preview",
+      contents: [{ parts: [{ text: prompt }] }],
+      config: {
+        responseMimeType: "application/json",
+        tools: [{ googleSearch: {} }],
+      },
+    });
 
-  return JSON.parse(result.text || "{}");
+    return JSON.parse(result.text || "{}");
+  } catch (err) {
+    console.error("Analysis error:", err);
+    throw err;
+  }
 }
 
 export async function getOptimizedItinerary(destination: string, days: number) {
@@ -105,19 +110,28 @@ export async function getOptimizedItinerary(destination: string, days: number) {
 
     Hyperlink every location/landmark to its Google Maps search result.`;
 
-  const result = await ai.models.generateContent({
-    model: "gemini-3-flash-preview",
-    contents: [{ parts: [{ text: prompt }] }],
-    config: {
-      responseMimeType: "application/json",
-      tools: [{ googleSearch: {} }],
-    },
-  });
+  try {
+    const result = await ai.models.generateContent({
+      model: "gemini-3-flash-preview",
+      contents: [{ parts: [{ text: prompt }] }],
+      config: {
+        responseMimeType: "application/json",
+        tools: [{ googleSearch: {} }],
+      },
+    });
 
-  return JSON.parse(result.text || "[]");
+    return JSON.parse(result.text || "[]");
+  } catch (err) {
+    console.error("Itinerary error:", err);
+    throw err;
+  }
 }
 
 export async function getDestinationImage(destination: string) {
+  // Image generation is very high quota cost or unsupported on some tiers.
+  // We'll use a high-quality placeholder logic or simply skip if it's causing 429s.
+  // For now, let's try a very simplified text-to-image request with a lighter model if possible,
+  // but if it fails, we just return null.
   try {
     const result = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
@@ -136,7 +150,7 @@ export async function getDestinationImage(destination: string) {
       }
     }
   } catch (err) {
-    console.error('Image generation failed:', err);
+    console.warn('Image generation skipped or failed:', err);
   }
   return null;
 }
