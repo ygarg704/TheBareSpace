@@ -77,20 +77,16 @@ export async function getTravelAnalysis(destination: string, origin: string) {
     4. HYPERLINK every location/landmark in the 'activities' field to a Google Maps search URL.
     5. Ensure the pricing and recommendations are contextually relative to someone traveling from ${origin}.`;
 
-  const model = ai.getGenerativeModel({ 
-    model: "gemini-1.5-flash",
-    tools: [{ googleSearch: {} }] as any
-  });
-
-  const result = await model.generateContent({
+  const result = await ai.models.generateContent({
+    model: "gemini-3-flash-preview",
     contents: [{ parts: [{ text: prompt }] }],
-    generationConfig: {
+    config: {
       responseMimeType: "application/json",
+      tools: [{ googleSearch: {} }],
     },
   });
 
-  const response = await result.response;
-  return JSON.parse(response.text() || "{}");
+  return JSON.parse(result.text || "{}");
 }
 
 export async function getOptimizedItinerary(destination: string, days: number) {
@@ -109,50 +105,22 @@ export async function getOptimizedItinerary(destination: string, days: number) {
 
     Hyperlink every location/landmark to its Google Maps search result.`;
 
-  const model = ai.getGenerativeModel({ 
-    model: "gemini-1.5-flash",
-    tools: [{ googleSearch: {} }] as any
-  });
-
-  const result = await model.generateContent({
+  const result = await ai.models.generateContent({
+    model: "gemini-3-flash-preview",
     contents: [{ parts: [{ text: prompt }] }],
-    generationConfig: {
+    config: {
       responseMimeType: "application/json",
+      tools: [{ googleSearch: {} }],
     },
   });
 
-  const response = await result.response;
-  return JSON.parse(response.text() || "[]");
-}
-
-export async function getLocationSuggestions(query: string) {
-  if (!query || query.length < 2) return [];
-  
-  const prompt = `Provide a list of 5 real-world destination or city suggestions (City, Country) that fuzzy match or complete the partial query: "${query}". 
-    Prioritize major international airports and popular tourist destinations. 
-    Handle common typos and fragments.
-    Return ONLY a JSON array of strings, e.g., ["London, United Kingdom", "Paris, France"].`;
-  
-  try {
-    const model = ai.getGenerativeModel({ model: "gemini-1.5-flash" });
-    const result = await model.generateContent({
-      contents: [{ parts: [{ text: prompt }] }],
-      generationConfig: {
-        responseMimeType: "application/json",
-      },
-    });
-    const response = await result.response;
-    return JSON.parse(response.text() || "[]");
-  } catch (err) {
-    console.error("Suggestions error:", err);
-    return [];
-  }
+  return JSON.parse(result.text || "[]");
 }
 
 export async function getDestinationImage(destination: string) {
   try {
-    const model = ai.getGenerativeModel({ model: 'gemini-1.5-flash' });
-    const response = await model.generateContent({
+    const result = await ai.models.generateContent({
+      model: 'gemini-3-flash-preview',
       contents: [{
         parts: [
           {
@@ -162,7 +130,6 @@ export async function getDestinationImage(destination: string) {
       }],
     });
 
-    const result = await response.response;
     for (const part of result.candidates?.[0]?.content?.parts || []) {
       if (part.inlineData) {
         return `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;

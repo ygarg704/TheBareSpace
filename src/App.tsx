@@ -7,7 +7,7 @@ import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Search, MapPin, Plane, Package, Ticket, Leaf, Info, Loader2, Sparkles, TrendingUp, Calendar, Map as MapIcon, ChevronRight, SlidersHorizontal } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
-import { getTravelAnalysis, getDestinationImage, getLocationSuggestions, getOptimizedItinerary } from './services/geminiService';
+import { getTravelAnalysis, getDestinationImage, getOptimizedItinerary } from './services/geminiService';
 import { TravelAnalysis, ItineraryDay } from './types';
 
 // Custom components for ReactMarkdown to ensure links open in a new tab
@@ -25,13 +25,6 @@ export default function App() {
   const [analysis, setAnalysis] = useState<TravelAnalysis | null>(null);
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-
-  // Suggestion states
-  const [originSuggestions, setOriginSuggestions] = useState<string[]>([]);
-  const [destSuggestions, setDestSuggestions] = useState<string[]>([]);
-  const [showOriginSuggestions, setShowOriginSuggestions] = useState(false);
-  const [showDestSuggestions, setShowDestSuggestions] = useState(false);
-  const [suggestionsLoading, setSuggestionsLoading] = useState({ origin: false, dest: false });
   const [selectedUtility, setSelectedUtility] = useState<string | null>(null);
 
   // Utility labels and content
@@ -53,31 +46,6 @@ export default function App() {
   // Slider state
   const [visibleDays, setVisibleDays] = useState(7);
   const [localItinerary, setLocalItinerary] = useState<ItineraryDay[]>([]);
-
-  const fetchSuggestions = async (query: string, type: 'origin' | 'dest') => {
-    if (query.length < 3) {
-      type === 'origin' ? setOriginSuggestions([]) : setDestSuggestions([]);
-      return;
-    }
-    setSuggestionsLoading(prev => ({ ...prev, [type]: true }));
-    const suggestions = await getLocationSuggestions(query);
-    type === 'origin' ? setOriginSuggestions(suggestions) : setDestSuggestions(suggestions);
-    setSuggestionsLoading(prev => ({ ...prev, [type]: false }));
-  };
-
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      if (origin && showOriginSuggestions) fetchSuggestions(origin, 'origin');
-    }, 800);
-    return () => clearTimeout(timer);
-  }, [origin, showOriginSuggestions]);
-
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      if (destination && showDestSuggestions) fetchSuggestions(destination, 'dest');
-    }, 800);
-    return () => clearTimeout(timer);
-  }, [destination, showDestSuggestions]);
 
   // Handle itinerary reload when days change
   useEffect(() => {
@@ -112,8 +80,6 @@ export default function App() {
     setError(null);
     setAnalysis(null);
     setImageUrl(null);
-    setShowOriginSuggestions(false);
-    setShowDestSuggestions(false);
     
     try {
       // Run analysis and image generation in parallel
@@ -174,102 +140,31 @@ export default function App() {
         
         <form onSubmit={handleSearch} className="flex flex-col sm:flex-row gap-2 w-full lg:w-auto relative p-2 bg-white/5 border border-white/5 rounded-[32px] backdrop-blur-3xl">
           {/* Origin Input */}
-          <div className="relative flex-1 min-w-[220px]">
-            <input
-              type="text"
-              placeholder="Origin..."
-              value={origin}
-              onChange={(e) => {
-                setOrigin(e.target.value);
-                setShowOriginSuggestions(true);
-              }}
-              onFocus={() => setShowOriginSuggestions(true)}
-              disabled={loading}
-              className="w-full bg-transparent border-none rounded-full py-4 pl-12 pr-4 focus:outline-none focus:ring-1 focus:ring-brand-primary transition-all text-sm uppercase tracking-widest font-mono"
-            />
-            <MapPin className="absolute left-4 top-1/2 -translate-y-1/2 text-white/40 h-4 w-4" />
-            
-            <AnimatePresence>
-              {showOriginSuggestions && (originSuggestions.length > 0 || suggestionsLoading.origin) && (
-                <motion.ul 
-                  initial={{ opacity: 0, y: -10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -10 }}
-                  className="absolute top-full left-0 right-0 mt-4 bg-[#050505] border border-white/5 rounded-2xl overflow-hidden z-[100] shadow-[0_32px_64px_-16px_rgba(0,0,0,0.8)]"
-                >
-                  {suggestionsLoading.origin && (
-                    <li className="p-4 flex items-center gap-3 border-b border-white/5 italic text-white/40 text-[10px] uppercase tracking-widest font-mono">
-                      <Loader2 className="h-3 w-3 animate-spin" />
-                      Syncing Origin...
-                    </li>
-                  )}
-                  {originSuggestions.map((s, i) => (
-                    <li 
-                      key={i}
-                      onClick={() => {
-                        setOrigin(s);
-                        setShowOriginSuggestions(false);
-                      }}
-                      className="p-4 hover:bg-white/5 cursor-pointer flex items-center gap-3 border-b border-white/5 last:border-b-0 group transition-colors"
-                    >
-                      <MapPin className="h-4 w-4 text-brand-primary/30 group-hover:text-brand-primary" />
-                      <span className="text-xs uppercase tracking-widest font-mono text-white/40 group-hover:text-white transition-colors">{s}</span>
-                    </li>
-                  ))}
-                </motion.ul>
-              )}
-            </AnimatePresence>
-          </div>
+              <div className="relative flex-1 min-w-[220px]">
+                <input
+                  type="text"
+                  placeholder="Origin..."
+                  value={origin}
+                  onChange={(e) => setOrigin(e.target.value)}
+                  disabled={loading}
+                  className="w-full bg-transparent border-none rounded-full py-4 pl-12 pr-4 focus:outline-none focus:ring-1 focus:ring-brand-primary transition-all text-sm uppercase tracking-widest font-mono"
+                />
+                <MapPin className="absolute left-4 top-1/2 -translate-y-1/2 text-white/40 h-4 w-4" />
+              </div>
           
           <div className="hidden sm:block w-[1px] h-8 bg-white/5 self-center" />
 
-          {/* Destination Input */}
-          <div className="relative flex-1 min-w-[220px]">
-            <input
-              type="text"
-              placeholder="Target..."
-              value={destination}
-              onChange={(e) => {
-                setDestination(e.target.value);
-                setShowDestSuggestions(true);
-              }}
-              onFocus={() => setShowDestSuggestions(true)}
-              disabled={loading}
-              className="w-full bg-transparent border-none rounded-full py-4 pl-12 pr-4 focus:outline-none focus:ring-1 focus:ring-brand-primary transition-all text-sm uppercase tracking-widest font-mono"
-            />
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-white/40 h-4 w-4" />
-
-            <AnimatePresence>
-              {showDestSuggestions && (destSuggestions.length > 0 || suggestionsLoading.dest) && (
-                <motion.ul 
-                  initial={{ opacity: 0, y: -10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -10 }}
-                  className="absolute top-full left-0 right-0 mt-4 bg-[#050505] border border-white/5 rounded-2xl overflow-hidden z-[100] shadow-[0_32px_64px_-16px_rgba(0,0,0,0.8)]"
-                >
-                  {suggestionsLoading.dest && (
-                    <li className="p-4 flex items-center gap-3 border-b border-white/5 italic text-white/40 text-[10px] uppercase tracking-widest font-mono">
-                      <Loader2 className="h-3 w-3 animate-spin" />
-                      Exploring Target...
-                    </li>
-                  )}
-                  {destSuggestions.map((s, i) => (
-                    <li 
-                      key={i}
-                      onClick={() => {
-                        setDestination(s);
-                        setShowDestSuggestions(false);
-                      }}
-                      className="p-4 hover:bg-white/5 cursor-pointer flex items-center gap-3 border-b border-white/5 last:border-b-0 group transition-colors"
-                    >
-                      <Search className="h-4 w-4 text-brand-primary/30 group-hover:text-brand-primary" />
-                      <span className="text-xs uppercase tracking-widest font-mono text-white/40 group-hover:text-white transition-colors">{s}</span>
-                    </li>
-                  ))}
-                </motion.ul>
-              )}
-            </AnimatePresence>
-          </div>
+              <div className="relative flex-1 min-w-[220px]">
+                <input
+                  type="text"
+                  placeholder="Target..."
+                  value={destination}
+                  onChange={(e) => setDestination(e.target.value)}
+                  disabled={loading}
+                  className="w-full bg-transparent border-none rounded-full py-4 pl-12 pr-4 focus:outline-none focus:ring-1 focus:ring-brand-primary transition-all text-sm uppercase tracking-widest font-mono"
+                />
+                <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-white/40 h-4 w-4" />
+              </div>
 
           <button 
             type="submit" 
@@ -284,10 +179,6 @@ export default function App() {
       {/* Main Content */}
       <main 
         className="relative min-h-[400px]"
-        onClick={() => {
-          setShowOriginSuggestions(false);
-          setShowDestSuggestions(false);
-        }}
       >
         <AnimatePresence mode="wait">
           {!analysis && !loading && !error && (
