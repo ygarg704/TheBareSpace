@@ -116,19 +116,30 @@ export default function App() {
     setShowDestSuggestions(false);
     
     try {
-      const [data, img] = await Promise.all([
-        getTravelAnalysis(targetDest, targetOrigin),
-        getDestinationImage(targetDest)
-      ]);
+      // Run analysis and image generation in parallel
+      // We handle image failure independently so it doesn't block the main analysis
+      const analysisPromise = getTravelAnalysis(targetDest, targetOrigin);
+      const imagePromise = getDestinationImage(targetDest).catch(err => {
+        console.warn('Image generation failed (non-critical):', err);
+        return null;
+      });
+
+      const [data, img] = await Promise.all([analysisPromise, imagePromise]);
+      
       setAnalysis(data);
       setVisibleDays(data.estimatedDays || 7);
       setLocalItinerary(data.itinerary);
       setImageUrl(img);
       // Ensure we scroll up to see the new results
       window.scrollTo({ top: 0, behavior: 'smooth' });
-    } catch (err) {
-      console.error(err);
-      setError('Failed to fetch optimized data. Please check your inputs and try again.');
+    } catch (err: any) {
+      console.error('Trigger Analysis Error:', err);
+      // Check if it's an API key error
+      if (err?.message?.includes('API_KEY_INVALID') || err?.message?.includes('401')) {
+        setError('Invalid API Key. Please verify your GEMINI_API_KEY in GitHub Secrets.');
+      } else {
+        setError(err?.message || 'Failed to fetch optimized data. Please check your inputs and try again.');
+      }
     } finally {
       setLoading(false);
     }

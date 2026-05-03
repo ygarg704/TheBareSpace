@@ -1,8 +1,17 @@
 import { GoogleGenAI } from "@google/genai";
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+const apiKey = process.env.GEMINI_API_KEY;
+
+if (!apiKey || apiKey === "undefined") {
+  console.error("GEMINI_API_KEY is not defined. Please set it in your environment variables or GitHub Secrets.");
+}
+
+const ai = new GoogleGenAI({ apiKey: apiKey || "" });
 
 export async function getTravelAnalysis(destination: string, origin: string) {
+  if (!apiKey || apiKey === "undefined") {
+    throw new Error("API Key Missing: Please ensure GEMINI_API_KEY is correctly set in GitHub Secrets and passed to the build process.");
+  }
   const prompt = `You are a specialist in climatology, tourism trends, and real-time deal hunting for the "Global Travel Optimizer" app.
     Destination: ${destination}
     Traveling from (Origin): ${origin}
