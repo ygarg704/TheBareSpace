@@ -85,7 +85,7 @@ export async function getTravelAnalysis(destination: string, origin: string) {
 
   try {
     const result = await ai.models.generateContent({
-      model: "models/gemini-1.5-flash",
+      model: "gemini-3-flash-preview",
       contents: [{ parts: [{ text: prompt }] }],
       config: {
         responseMimeType: "application/json",
@@ -123,7 +123,7 @@ export async function getOptimizedItinerary(destination: string, days: number) {
 
   try {
     const result = await ai.models.generateContent({
-      model: "models/gemini-1.5-flash",
+      model: "gemini-3-flash-preview",
       contents: [{ parts: [{ text: prompt }] }],
       config: {
         responseMimeType: "application/json",
@@ -146,7 +146,7 @@ export async function getDestinationImage(destination: string) {
 
   try {
     const result = await ai.models.generateContent({
-      model: "models/gemini-1.5-flash",
+      model: "gemini-2.5-flash-image",
       contents: [{
         parts: [
           {
