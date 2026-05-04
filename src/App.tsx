@@ -50,7 +50,7 @@ export default function App() {
   useEffect(() => {
     if (!analysis) return;
 
-    // Use full14DayItinerary as the master source, fallback to itinerary if needed
+    // Use full14DayItinerary if available, fallback to initial itinerary
     const masterSource = analysis.full14DayItinerary || analysis.itinerary;
     if (masterSource && masterSource.length > 0) {
       // Return a slice based on visibleDays
@@ -75,7 +75,7 @@ export default function App() {
       
       setAnalysis(data);
       setVisibleDays(data.estimatedDays || 7);
-      setLocalItinerary(Array.isArray(data.itinerary) ? data.itinerary : []);
+      setLocalItinerary(data.itinerary);
       
       // Load image second to avoid simultaneous hits
       try {
@@ -296,7 +296,7 @@ export default function App() {
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-white/5">
-                          {(analysis.seasonalAnalysis || []).map((row) => (
+                          {analysis.seasonalAnalysis.map((row) => (
                             <tr key={row.months} className="group hover:bg-white/[0.03] transition-colors">
                               <td className="p-5">
                                 <div className="font-medium flex items-center gap-2 whitespace-nowrap">
@@ -343,7 +343,7 @@ export default function App() {
                     </div>
                     
                     <div className="space-y-4 relative">
-                      {(localItinerary || []).map((day) => (
+                      {localItinerary.map((day) => (
                         <motion.div 
                           key={day.day} 
                           initial={{ opacity: 0, x: -20 }}
@@ -430,7 +430,7 @@ export default function App() {
                           <p className="small-caps">Recommended Similar Vibes</p>
                         </div>
                         <div className="grid grid-cols-1 gap-4">
-                          {(analysis.similarDestinations || []).map((dest, idx) => (
+                          {analysis.similarDestinations.map((dest, idx) => (
                             <div 
                               key={idx} 
                               onClick={() => {
