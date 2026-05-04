@@ -101,14 +101,14 @@ export default function App() {
     } catch (err: any) {
       console.error('Trigger Analysis Error:', err);
       
-      const errorMessage = err?.message || '';
+      const errorMessage = typeof err === 'object' && err !== null ? (err.message || JSON.stringify(err)) : String(err);
       
       if (errorMessage.includes('RESOURCE_EXHAUSTED') || errorMessage.includes('429')) {
-        setError('Quota Exceeded: You have reached the Gemini API rate limit. Please wait a minute or check your AI Studio console usage limits.');
+        setError('QUOTA EXCEEDED: The nomadic intelligence nodes are saturated. Please wait 60 seconds for the next sync cycle. (Gemini API Rate Limit)');
       } else if (errorMessage.includes('API_KEY_INVALID') || errorMessage.includes('401')) {
-        setError('Invalid API Key. Please verify your GEMINI_API_KEY in GitHub Secrets.');
+        setError('AUTHENTICATION FAILURE: The provided GEMINI_API_KEY is invalid or missing in the cloud environment.');
       } else {
-        setError(errorMessage || 'Failed to fetch optimized data. Please check your inputs and try again.');
+        setError(errorMessage || 'Failed to extract optimized data. Please verify targets and try again.');
       }
     } finally {
       setLoading(false);

@@ -8,7 +8,13 @@ if (!apiKey || apiKey === "undefined") {
 
 const ai = new GoogleGenAI({ apiKey: apiKey || "" });
 
+// Simple in-memory cache to prevent redundant hits and save quota
+const analysisCache = new Map<string, any>();
+
 export async function getTravelAnalysis(destination: string, origin: string) {
+  const cacheKey = `analysis-${destination}-${origin}`.toLowerCase();
+  if (analysisCache.has(cacheKey)) return analysisCache.get(cacheKey);
+
   if (!apiKey || apiKey === "undefined") {
     throw new Error("API Key Missing: Please ensure GEMINI_API_KEY is correctly set in GitHub Secrets and passed to the build process.");
   }
@@ -73,7 +79,7 @@ export async function getTravelAnalysis(destination: string, origin: string) {
     Instructions:
     1. Use Google Search to find REAL active, bookable deals from ${origin} to ${destination}.
     2. HYPERLINK the deals directly to the merchant websites using Markdown [Name](URL).
-    3. Generate an optimized daily itinerary for the 'estimatedDays' count. 
+    3. Generate an optimized daily itinerary for EXACTLY the 'estimatedDays' count you decide. 
     4. HYPERLINK every location/landmark in the 'activities' field to a Google Maps search URL.
     5. Ensure the pricing and recommendations are contextually relative to someone traveling from ${origin}.`;
 
@@ -87,7 +93,9 @@ export async function getTravelAnalysis(destination: string, origin: string) {
       },
     });
 
-    return JSON.parse(result.text || "{}");
+    const data = JSON.parse(result.text || "{}");
+    analysisCache.set(cacheKey, data);
+    return data;
   } catch (err) {
     console.error("Analysis error:", err);
     throw err;
@@ -95,6 +103,9 @@ export async function getTravelAnalysis(destination: string, origin: string) {
 }
 
 export async function getOptimizedItinerary(destination: string, days: number) {
+  const cacheKey = `itinerary-${destination}-${days}`.toLowerCase();
+  if (analysisCache.has(cacheKey)) return analysisCache.get(cacheKey);
+
   const prompt = `You are a travel planning expert.
     Destination: ${destination}
     Duration: ${days} days
@@ -120,7 +131,9 @@ export async function getOptimizedItinerary(destination: string, days: number) {
       },
     });
 
-    return JSON.parse(result.text || "[]");
+    const data = JSON.parse(result.text || "[]");
+    analysisCache.set(cacheKey, data);
+    return data;
   } catch (err) {
     console.error("Itinerary error:", err);
     throw err;
@@ -128,13 +141,12 @@ export async function getOptimizedItinerary(destination: string, days: number) {
 }
 
 export async function getDestinationImage(destination: string) {
-  // Image generation is very high quota cost or unsupported on some tiers.
-  // We'll use a high-quality placeholder logic or simply skip if it's causing 429s.
-  // For now, let's try a very simplified text-to-image request with a lighter model if possible,
-  // but if it fails, we just return null.
+  const cacheKey = `image-${destination}`.toLowerCase();
+  if (analysisCache.has(cacheKey)) return analysisCache.get(cacheKey);
+
   try {
     const result = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
+      model: 'gemini-2.5-flash-image',
       contents: [{
         parts: [
           {
@@ -146,7 +158,9 @@ export async function getDestinationImage(destination: string) {
 
     for (const part of result.candidates?.[0]?.content?.parts || []) {
       if (part.inlineData) {
-        return `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
+        const url = `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
+        analysisCache.set(cacheKey, url);
+        return url;
       }
     }
   } catch (err) {
