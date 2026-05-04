@@ -5,9 +5,9 @@
 
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Search, MapPin, Plane, Package, Ticket, Leaf, Info, Loader2, Sparkles, TrendingUp, Calendar, Map as MapIcon, ChevronRight, SlidersHorizontal } from 'lucide-react';
+import { Search, MapPin, Plane, Package, Ticket, Leaf, Info, Loader2, Sparkles, TrendingUp, Calendar, Map as MapIcon, ChevronRight, SlidersHorizontal, X } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
-import { getTravelAnalysis, getDestinationImage, getOptimizedItinerary } from './services/geminiService';
+import { getTravelAnalysis, getDestinationImage, getCitySuggestions } from './services/geminiService';
 import { TravelAnalysis, ItineraryDay } from './types';
 
 // Custom components for ReactMarkdown to ensure links open in a new tab
@@ -20,11 +20,38 @@ const markdownComponents = {
 export default function App() {
   const [destination, setDestination] = useState('');
   const [origin, setOrigin] = useState('');
+  const [destSuggestions, setDestSuggestions] = useState<string[]>([]);
+  const [originSuggestions, setOriginSuggestions] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [analysis, setAnalysis] = useState<TravelAnalysis | null>(null);
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [selectedUtility, setSelectedUtility] = useState<string | null>(null);
+
+  // Autocomplete logic
+  useEffect(() => {
+    const timer = setTimeout(async () => {
+      if (destination.length >= 2) {
+        const suggestions = await getCitySuggestions(destination);
+        setDestSuggestions(suggestions);
+      } else {
+        setDestSuggestions([]);
+      }
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [destination]);
+
+  useEffect(() => {
+    const timer = setTimeout(async () => {
+      if (origin.length >= 2) {
+        const suggestions = await getCitySuggestions(origin);
+        setOriginSuggestions(suggestions);
+      } else {
+        setOriginSuggestions([]);
+      }
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [origin]);
 
   // Utility labels and content
   const UTILITY_CONTENT: Record<string, { title: string; body: string }> = {
@@ -38,7 +65,17 @@ export default function App() {
     },
     'API Source': {
       title: 'DATA INFRASTRUCTURE',
-      body: 'Intelligence synthesized via Gemini 1.5 Pro. Flight indices provided by Skyscanner and Google Search Grounding. Climactic data sourced from ERA5 Reanalysis and real-time sensor networks.'
+      body: 'Intelligence synthesized via Gemini 3 Flash. Flight indices provided by Skyscanner and Google Search Grounding. Climactic data sourced from ERA5 Reanalysis and real-time sensor networks.'
+    }
+  };
+
+  const clearInput = (field: 'dest' | 'origin') => {
+    if (field === 'dest') {
+      setDestination('');
+      setDestSuggestions([]);
+    } else {
+      setOrigin('');
+      setOriginSuggestions([]);
     }
   };
 
@@ -68,36 +105,29 @@ export default function App() {
     setError(null);
     setAnalysis(null);
     setImageUrl(null);
+    setDestSuggestions([]);
+    setOriginSuggestions([]);
     
     try {
-      // Run analysis first
-      const data = await getTravelAnalysis(targetDest, targetOrigin);
+      // Parallelize analysis and image fetching for speed
+      const [data, img] = await Promise.all([
+        getTravelAnalysis(targetDest, targetOrigin),
+        getDestinationImage(targetDest).catch(err => {
+          console.warn('Image fetch failed:', err);
+          return null;
+        })
+      ]);
       
       setAnalysis(data);
+      setImageUrl(data.heroImageUrl || img);
       setVisibleDays(data.estimatedDays || 7);
       setLocalItinerary(data.itinerary);
       
-      // Load image second to avoid simultaneous hits
-      try {
-        const img = await getDestinationImage(targetDest);
-        setImageUrl(img);
-      } catch (imgErr) {
-        console.warn('Non-critical image load failure:', imgErr);
-      }
-
       window.scrollTo({ top: 0, behavior: 'smooth' });
     } catch (err: any) {
       console.error('Trigger Analysis Error:', err);
-      
       const errorMessage = typeof err === 'object' && err !== null ? (err.message || JSON.stringify(err)) : String(err);
-      
-      if (errorMessage.includes('RESOURCE_EXHAUSTED') || errorMessage.includes('429')) {
-        setError('QUOTA EXCEEDED: The nomadic intelligence nodes are saturated. Please wait 60 seconds for the next sync cycle. (Gemini API Rate Limit)');
-      } else if (errorMessage.includes('API_KEY_INVALID') || errorMessage.includes('401')) {
-        setError('AUTHENTICATION FAILURE: The provided GEMINI_API_KEY is invalid or missing in the cloud environment.');
-      } else {
-        setError(errorMessage || 'Failed to extract optimized data. Please verify targets and try again.');
-      }
+      setError(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -129,33 +159,102 @@ export default function App() {
           </p>
         </div>
         
-        <form onSubmit={handleSearch} className="flex flex-col sm:flex-row gap-2 w-full lg:w-auto relative p-2 bg-white/5 border border-white/5 rounded-[32px] backdrop-blur-3xl">
+        <form onSubmit={handleSearch} className="flex flex-col sm:flex-row gap-2 w-full lg:w-auto relative p-2 bg-white/5 border border-white/5 rounded-[32px] backdrop-blur-3xl shadow-2xl">
           {/* Origin Input */}
-              <div className="relative flex-1 min-w-[220px]">
-                <input
-                  type="text"
-                  placeholder="Origin..."
-                  value={origin}
-                  onChange={(e) => setOrigin(e.target.value)}
-                  disabled={loading}
-                  className="w-full bg-transparent border-none rounded-full py-4 pl-12 pr-4 focus:outline-none focus:ring-1 focus:ring-brand-primary transition-all text-sm uppercase tracking-widest font-mono"
-                />
-                <MapPin className="absolute left-4 top-1/2 -translate-y-1/2 text-white/40 h-4 w-4" />
-              </div>
+          <div className="relative flex-1 min-w-[240px]">
+            <input
+              type="text"
+              placeholder="Origin..."
+              value={origin}
+              onChange={(e) => setOrigin(e.target.value)}
+              disabled={loading}
+              className="w-full bg-transparent border-none rounded-full py-4 pl-12 pr-10 focus:outline-none transition-all text-sm uppercase tracking-widest font-mono"
+            />
+            <MapPin className="absolute left-4 top-1/2 -translate-y-1/2 text-white/40 h-4 w-4" />
+            {origin && !loading && (
+              <button 
+                type="button" 
+                onClick={() => clearInput('origin')}
+                className="absolute right-4 top-1/2 -translate-y-1/2 text-white/40 hover:text-white transition-colors"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            )}
+            
+            <AnimatePresence>
+              {originSuggestions.length > 0 && (
+                <motion.div 
+                  initial={{ opacity: 0, y: -10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -10 }}
+                  className="absolute left-0 right-0 top-full mt-2 bg-[#0A0A0A] border border-white/10 rounded-2xl overflow-hidden z-50 shadow-2xl"
+                >
+                  {originSuggestions.map(s => (
+                    <button
+                      key={s}
+                      type="button"
+                      onClick={() => {
+                        setOrigin(s);
+                        setOriginSuggestions([]);
+                      }}
+                      className="w-full text-left px-5 py-3 text-xs font-mono uppercase tracking-widest hover:bg-brand-primary/20 hover:text-brand-primary transition-colors border-b border-white/5 last:border-none"
+                    >
+                      {s}
+                    </button>
+                  ))}
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
           
           <div className="hidden sm:block w-[1px] h-8 bg-white/5 self-center" />
 
-              <div className="relative flex-1 min-w-[220px]">
-                <input
-                  type="text"
-                  placeholder="Target..."
-                  value={destination}
-                  onChange={(e) => setDestination(e.target.value)}
-                  disabled={loading}
-                  className="w-full bg-transparent border-none rounded-full py-4 pl-12 pr-4 focus:outline-none focus:ring-1 focus:ring-brand-primary transition-all text-sm uppercase tracking-widest font-mono"
-                />
-                <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-white/40 h-4 w-4" />
-              </div>
+          {/* Destination Input */}
+          <div className="relative flex-1 min-w-[240px]">
+            <input
+              type="text"
+              placeholder="Target..."
+              value={destination}
+              onChange={(e) => setDestination(e.target.value)}
+              disabled={loading}
+              className="w-full bg-transparent border-none rounded-full py-4 pl-12 pr-10 focus:outline-none transition-all text-sm uppercase tracking-widest font-mono"
+            />
+            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-white/40 h-4 w-4" />
+            {destination && !loading && (
+              <button 
+                type="button" 
+                onClick={() => clearInput('dest')}
+                className="absolute right-4 top-1/2 -translate-y-1/2 text-white/40 hover:text-white transition-colors"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            )}
+
+            <AnimatePresence>
+              {destSuggestions.length > 0 && (
+                <motion.div 
+                  initial={{ opacity: 0, y: -10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -10 }}
+                  className="absolute left-0 right-0 top-full mt-2 bg-[#0A0A0A] border border-white/10 rounded-2xl overflow-hidden z-50 shadow-2xl"
+                >
+                  {destSuggestions.map(s => (
+                    <button
+                      key={s}
+                      type="button"
+                      onClick={() => {
+                        setDestination(s);
+                        setDestSuggestions([]);
+                      }}
+                      className="w-full text-left px-5 py-3 text-xs font-mono uppercase tracking-widest hover:bg-brand-primary/20 hover:text-brand-primary transition-colors border-b border-white/5 last:border-none"
+                    >
+                      {s}
+                    </button>
+                  ))}
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
 
           <button 
             type="submit" 

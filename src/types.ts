@@ -18,6 +18,7 @@ export interface ItineraryDay {
 
 export interface TravelAnalysis {
   destinationVerdict: string;
+  heroImageUrl?: string;
   seasonalAnalysis: SeasonalData[];
   liveDeals: {
     flights: string; // Expecting markdown links

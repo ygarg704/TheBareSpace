@@ -1,98 +1,139 @@
 import { GoogleGenAI } from "@google/genai";
 
 const apiKey = process.env.GEMINI_API_KEY;
-
-if (!apiKey || apiKey === "undefined") {
-  console.error("GEMINI_API_KEY is not defined. Please set it in your environment variables or GitHub Secrets.");
-}
-
 const ai = new GoogleGenAI({ apiKey: apiKey || "" });
 
-// Simple in-memory cache to prevent redundant hits and save quota
-const analysisCache = new Map<string, any>();
-
-export async function getTravelAnalysis(destination: string, origin: string) {
-  const cacheKey = `analysis-v3-${destination}-${origin}`.toLowerCase();
-  if (analysisCache.has(cacheKey)) return analysisCache.get(cacheKey);
-
-  if (!apiKey || apiKey === "undefined") {
-    throw new Error("API Key Missing: Please ensure GEMINI_API_KEY is correctly set.");
-  }
-
+// Persistent cache using localStorage to save quota across sessions
+const getCache = (key: string) => {
   try {
-    const prompt = `You are a specialist in climatology, tourism trends, and real-time deal hunting.
-      Destination: ${destination}
-      Current Date: ${new Date().toLocaleDateString()}
-      From: ${origin}
+    const data = localStorage.getItem(key);
+    return data ? JSON.parse(data) : null;
+  } catch (e) {
+    return null;
+  }
+};
 
-      Generate a comprehensive travel intelligence report for ${destination} from ${origin}.`;
+const setCache = (key: string, data: any) => {
+  try {
+    localStorage.setItem(key, JSON.stringify(data));
+  } catch (e) {
+    console.warn("Storage quota full, falling back to memory.");
+  }
+};
 
-    const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
-      contents: [{ parts: [{ text: prompt }] }],
-      config: {
-        responseMimeType: "application/json",
-        systemInstruction: `You are the core of "NOMAD INTEL", an autonomous travel intelligence agent.
-        Your goal is to provide precise, data-driven travel advice, real-world deals, and optimized itineraries.
-        
-        Your response MUST be a JSON object following this EXACT schema:
-        {
-          "destinationVerdict": "string",
-          "seasonalAnalysis": [
-            { "season": "string", "months": "string", "weather": "string", "avgTemp": "string", "rainDays": "string", "daylight": "string", "events": "string", "crowdLevel": "string", "priceIndex": "string" }
-          ],
-          "liveDeals": {
-            "flights": "string (Markdown)",
-            "packages": "string (Markdown)",
-            "promoCodes": "string (Markdown)"
-          },
-          "estimatedDays": number,
-          "itinerary": [
-            { "day": number, "title": "string", "activities": "string" }
-          ],
-          "full14DayItinerary": [
-            { "day": number, "title": "string", "activities": "string" }
-          ],
-          "proTip": "string",
-          "similarDestinations": [
-            { "name": "string", "reason": "string", "vibe": "string", "matchScore": number }
-          ]
-        }
-        
-        Instructions:
-        1. Use Google Search grounding to find REAL deals.
-        2. Hyperlink landmarks to Google Maps.
-        3. Hyperlink deals to merchant sites.
-        4. Provide 14 days of data in full14DayItinerary.`,
-        tools: [{ googleSearch: {} }],
-      },
-    });
-
-    if (!response || !response.text) {
-      throw new Error("EMPTY_RESPONSE: The intelligence scan returned no data.");
-    }
-
-    const data = JSON.parse(response.text.trim());
-    analysisCache.set(cacheKey, data);
-    return data;
+// Retry helper with exponential backoff for 429s (Quota)
+async function withRetry<T>(fn: () => Promise<T>, retries = 3, delay = 2000): Promise<T> {
+  try {
+    return await fn();
   } catch (err: any) {
-    console.error("Analysis error:", err);
-    // Explicitly handle 429 and 404 for the UI
-    if (err.message?.includes('429')) throw new Error("QUOTA_SATURATED: Please wait 60s for next node sync.");
-    if (err.message?.includes('404')) throw new Error("MODEL_NOT_FOUND: Switching nodes. Please retry.");
+    // Standard error check for Gemini API
+    const errorStr = JSON.stringify(err);
+    if ((errorStr.includes('429') || errorStr.includes('quota')) && retries > 0) {
+      console.log(`Quota hit. Retrying in ${delay}ms... (${retries} attempts left)`);
+      await new Promise(r => setTimeout(r, delay));
+      return withRetry(fn, retries - 1, delay * 2);
+    }
     throw err;
   }
 }
 
-export async function getOptimizedItinerary(destination: string, days: number) {
-  // Now we don't strictly need this as a separate call if we have full14DayItinerary in the first call.
-  // But for compatibility with existing UI, we'll return from cache or return a subset.
-  // The UI calls this separately when the slider moves. 
-  // We'll manage this logic in App.tsx to avoid the extra hit.
-  return []; 
+export async function getCitySuggestions(query: string) {
+  if (!query || query.length < 2) return [];
+  
+  const cacheKey = `suggest-v4-${query.toLowerCase()}`;
+  const cached = getCache(cacheKey);
+  if (cached) return cached;
+
+  try {
+    return await withRetry(async () => {
+      const response = await ai.models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: [{ parts: [{ text: `List 5 major cities or tourist destinations matching: "${query}". Return ONLY a JSON array of strings.` }] }],
+        config: {
+          responseMimeType: "application/json",
+        }
+      });
+
+      const text = response.text;
+      if (!text) return [];
+      
+      const suggestions = JSON.parse(text.trim());
+      setCache(cacheKey, suggestions);
+      return suggestions;
+    });
+  } catch (err) {
+    console.warn("Suggestion error:", err);
+    return [];
+  }
 }
 
+export async function getTravelAnalysis(destination: string, origin: string) {
+  const cacheKey = `analysis-v12-${destination}-${origin}`.toLowerCase();
+  const cached = getCache(cacheKey);
+  if (cached) return cached;
+
+  if (!apiKey || apiKey === "undefined") {
+    throw new Error("API Key Missing: Please ensure GEMINI_API_KEY is correctly set in your environment variables.");
+  }
+
+  try {
+    return await withRetry(async () => {
+      const prompt = `Travel intelligence request: ${destination} from ${origin}. 
+        Current Date: ${new Date().toLocaleDateString()}.
+        Provide: Verdict, Seasonal Climatology (3 tiers), REAL bookable flight/hotel deals from ${origin}, 7-day optimized itinerary, 14-day expanded itinerary, pro-tips, and 3 high-match similar destinations.
+        Include a 'heroImageUrl' field with a direct link to a professional cityscape/landscape photo of ${destination}.`;
+
+      const response = await ai.models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: [{ parts: [{ text: prompt }] }],
+        config: {
+          responseMimeType: "application/json",
+          systemInstruction: `You are NOMAD INTEL, a hyper-fast autonomous travel agent. 
+          Your output MUST be high-fidelity, professional, and data-dense.
+
+          JSON Schema:
+          {
+            "destinationVerdict": "Elite travel insight (1 sentence)",
+            "heroImageUrl": "Direct URL to a high-quality professional photograph",
+            "seasonalAnalysis": [{"season": "Peak/Shoulder/Off", "months": "string", "weather": "string", "avgTemp": "string", "rainDays": "string", "daylight": "string", "events": "string", "crowdLevel": "string", "priceIndex": "$$$"}],
+            "liveDeals": {"flights": "Markdown with links", "packages": "Markdown with links", "promoCodes": "Markdown with links"},
+            "estimatedDays": number,
+            "itinerary": [{"day": number, "title": "string", "activities": "Detailed markdown with maps links"}],
+            "full14DayItinerary": [{"day": number, "title": "string", "activities": "Full details"}],
+            "proTip": "Insider secret",
+            "similarDestinations": [{"name": "string", "reason": "string", "vibe": "string", "matchScore": number}]
+          }
+
+          Instructions:
+          1. Use Google Search grounding for REAL deals. Use Markdown [Merchant](URL).
+          2. Use Google Search to find a specific, accurate hero image URL for ${destination}.
+          3. Hyperlink every landmark/activity to Google Maps search.
+          4. Be concise but data-rich.`,
+          tools: [{ googleSearch: {} }],
+        },
+      });
+
+      const text = response.text;
+      if (!text) {
+        throw new Error("EMPTY_RESPONSE: The intelligence scan returned no data.");
+      }
+
+      const data = JSON.parse(text.trim());
+      setCache(cacheKey, data);
+      return data;
+    });
+  } catch (err: any) {
+    console.error("Analysis error:", err);
+    const errorMessage = typeof err === 'string' ? err : (err.message || JSON.stringify(err));
+    if (errorMessage.includes('429')) throw new Error("QUOTA_SATURATED: The Gemini API is currently at its limit. Please wait a moment and try again.");
+    if (errorMessage.includes('404')) throw new Error("MODEL_NOT_FOUND: Switching to a more available model node. Please retry.");
+    throw err;
+  }
+}
+
+
 export async function getDestinationImage(destination: string) {
-  // Use a reliable, high-quality static image logic to save API quota
-  return `https://images.unsplash.com/photo-1542314831-068cd1dbfeeb?auto=format&fit=crop&q=80&w=1200&q=destination=${encodeURIComponent(destination)}`;
+  const cleanDest = destination.split(',')[0].trim();
+  const searchTerms = `travel,landscape,cityscape,architecture,${cleanDest}`;
+  return `https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?auto=format&fit=crop&q=85&w=1600&q=${encodeURIComponent(searchTerms)}`;
 }
