@@ -22,23 +22,53 @@ const setCache = (key: string, data: any) => {
 };
 
 // Retry helper with exponential backoff for 429s (Quota)
-async function withRetry<T>(fn: () => Promise<T>, retries = 3, delay = 5000): Promise<T> {
+async function withRetry<T>(fn: () => Promise<T>, retries = 3, delay = 2000): Promise<T> {
   try {
     return await fn();
   } catch (err: any) {
     // Standard error check for Gemini API
     const errorStr = JSON.stringify(err);
     if ((errorStr.includes('429') || errorStr.includes('quota')) && retries > 0) {
-      console.warn(`Quota rate limit reached. Backing off for ${delay}ms...`);
+      console.log(`Quota hit. Retrying in ${delay}ms... (${retries} attempts left)`);
       await new Promise(r => setTimeout(r, delay));
-      return withRetry(fn, retries - 1, delay * 3); // Aggressive backoff
+      return withRetry(fn, retries - 1, delay * 2);
     }
     throw err;
   }
 }
 
+export async function getCitySuggestions(query: string) {
+  if (!query || query.length < 2) return [];
+  
+  const cacheKey = `suggest-v4-${query.toLowerCase()}`;
+  const cached = getCache(cacheKey);
+  if (cached) return cached;
+
+  try {
+    return await withRetry(async () => {
+      const response = await ai.models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: [{ parts: [{ text: `List 5 major cities or tourist destinations matching: "${query}". Return ONLY a JSON array of strings.` }] }],
+        config: {
+          responseMimeType: "application/json",
+        }
+      });
+
+      const text = response.text;
+      if (!text) return [];
+      
+      const suggestions = JSON.parse(text.trim());
+      setCache(cacheKey, suggestions);
+      return suggestions;
+    });
+  } catch (err) {
+    console.warn("Suggestion error:", err);
+    return [];
+  }
+}
+
 export async function getTravelAnalysis(destination: string, origin: string) {
-  const cacheKey = `analysis-v13-${destination}-${origin}`.toLowerCase();
+  const cacheKey = `analysis-v12-${destination}-${origin}`.toLowerCase();
   const cached = getCache(cacheKey);
   if (cached) return cached;
 
@@ -50,7 +80,7 @@ export async function getTravelAnalysis(destination: string, origin: string) {
     return await withRetry(async () => {
       const prompt = `Travel intelligence request: ${destination} from ${origin}. 
         Current Date: ${new Date().toLocaleDateString()}.
-        Provide: Verdict, Seasonal Climatology (3 tiers), REAL bookable flight/hotel deals from ${origin}, 7-day optimized itinerary, pro-tips, and 3 high-match similar destinations.
+        Provide: Verdict, Seasonal Climatology (3 tiers), REAL bookable flight/hotel deals from ${origin}, 7-day optimized itinerary, 14-day expanded itinerary, pro-tips, and 3 high-match similar destinations.
         Include a 'heroImageUrl' field with a direct link to a professional cityscape/landscape photo of ${destination}.`;
 
       const response = await ai.models.generateContent({
@@ -68,7 +98,8 @@ export async function getTravelAnalysis(destination: string, origin: string) {
             "seasonalAnalysis": [{"season": "Peak/Shoulder/Off", "months": "string", "weather": "string", "avgTemp": "string", "rainDays": "string", "daylight": "string", "events": "string", "crowdLevel": "string", "priceIndex": "$$$"}],
             "liveDeals": {"flights": "Markdown with links", "packages": "Markdown with links", "promoCodes": "Markdown with links"},
             "estimatedDays": number,
-            "itinerary": [{"day": number, "title": "string", "activities": "Detailed markdown"}],
+            "itinerary": [{"day": number, "title": "string", "activities": "Detailed markdown with maps links"}],
+            "full14DayItinerary": [{"day": number, "title": "string", "activities": "Full details"}],
             "proTip": "Insider secret",
             "similarDestinations": [{"name": "string", "reason": "string", "vibe": "string", "matchScore": number}]
           }
@@ -76,8 +107,8 @@ export async function getTravelAnalysis(destination: string, origin: string) {
           Instructions:
           1. Use Google Search grounding for REAL deals. Use Markdown [Merchant](URL).
           2. Use Google Search to find a specific, accurate hero image URL for ${destination}.
-          3. Hyperlink landmarks to Google Maps search.
-          4. Be extremely concise to avoid quota timeouts.`,
+          3. Hyperlink every landmark/activity to Google Maps search.
+          4. Be concise but data-rich.`,
           tools: [{ googleSearch: {} }],
         },
       });
@@ -94,8 +125,8 @@ export async function getTravelAnalysis(destination: string, origin: string) {
   } catch (err: any) {
     console.error("Analysis error:", err);
     const errorMessage = typeof err === 'string' ? err : (err.message || JSON.stringify(err));
-    if (errorMessage.includes('429')) throw new Error("QUOTA_SATURATED: The intelligence nodes are busy. Please wait 15-30 seconds for the next sync.");
-    if (errorMessage.includes('404')) throw new Error("MODEL_UNAVAILABLE: The model is currently cycling. Please retry in a moment.");
+    if (errorMessage.includes('429')) throw new Error("QUOTA_SATURATED: The Gemini API is currently at its limit. Please wait a moment and try again.");
+    if (errorMessage.includes('404')) throw new Error("MODEL_NOT_FOUND: Switching to a more available model node. Please retry.");
     throw err;
   }
 }
