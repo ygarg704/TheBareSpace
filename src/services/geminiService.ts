@@ -22,7 +22,7 @@ const setCache = (key: string, data: any) => {
 };
 
 // Retry helper with exponential backoff for 429s (Quota)
-async function withRetry<T>(fn: () => Promise<T>, retries = 3, delay = 2000): Promise<T> {
+async function withRetry<T>(fn: () => Promise<T>, retries = 3, delay = 3000): Promise<T> {
   try {
     return await fn();
   } catch (err: any) {
@@ -34,36 +34,6 @@ async function withRetry<T>(fn: () => Promise<T>, retries = 3, delay = 2000): Pr
       return withRetry(fn, retries - 1, delay * 2);
     }
     throw err;
-  }
-}
-
-export async function getCitySuggestions(query: string) {
-  if (!query || query.length < 2) return [];
-  
-  const cacheKey = `suggest-v4-${query.toLowerCase()}`;
-  const cached = getCache(cacheKey);
-  if (cached) return cached;
-
-  try {
-    return await withRetry(async () => {
-      const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
-        contents: [{ parts: [{ text: `List 5 major cities or tourist destinations matching: "${query}". Return ONLY a JSON array of strings.` }] }],
-        config: {
-          responseMimeType: "application/json",
-        }
-      });
-
-      const text = response.text;
-      if (!text) return [];
-      
-      const suggestions = JSON.parse(text.trim());
-      setCache(cacheKey, suggestions);
-      return suggestions;
-    });
-  } catch (err) {
-    console.warn("Suggestion error:", err);
-    return [];
   }
 }
 

@@ -7,7 +7,7 @@ import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Search, MapPin, Plane, Package, Ticket, Leaf, Info, Loader2, Sparkles, TrendingUp, Calendar, Map as MapIcon, ChevronRight, SlidersHorizontal, X } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
-import { getTravelAnalysis, getDestinationImage, getCitySuggestions } from './services/geminiService';
+import { getTravelAnalysis, getDestinationImage } from './services/geminiService';
 import { TravelAnalysis, ItineraryDay } from './types';
 
 // Custom components for ReactMarkdown to ensure links open in a new tab
@@ -20,38 +20,11 @@ const markdownComponents = {
 export default function App() {
   const [destination, setDestination] = useState('');
   const [origin, setOrigin] = useState('');
-  const [destSuggestions, setDestSuggestions] = useState<string[]>([]);
-  const [originSuggestions, setOriginSuggestions] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [analysis, setAnalysis] = useState<TravelAnalysis | null>(null);
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [selectedUtility, setSelectedUtility] = useState<string | null>(null);
-
-  // Autocomplete logic
-  useEffect(() => {
-    const timer = setTimeout(async () => {
-      if (destination.length >= 2) {
-        const suggestions = await getCitySuggestions(destination);
-        setDestSuggestions(suggestions);
-      } else {
-        setDestSuggestions([]);
-      }
-    }, 400);
-    return () => clearTimeout(timer);
-  }, [destination]);
-
-  useEffect(() => {
-    const timer = setTimeout(async () => {
-      if (origin.length >= 2) {
-        const suggestions = await getCitySuggestions(origin);
-        setOriginSuggestions(suggestions);
-      } else {
-        setOriginSuggestions([]);
-      }
-    }, 400);
-    return () => clearTimeout(timer);
-  }, [origin]);
 
   // Utility labels and content
   const UTILITY_CONTENT: Record<string, { title: string; body: string }> = {
@@ -72,10 +45,8 @@ export default function App() {
   const clearInput = (field: 'dest' | 'origin') => {
     if (field === 'dest') {
       setDestination('');
-      setDestSuggestions([]);
     } else {
       setOrigin('');
-      setOriginSuggestions([]);
     }
   };
 
@@ -105,10 +76,11 @@ export default function App() {
     setError(null);
     setAnalysis(null);
     setImageUrl(null);
-    setDestSuggestions([]);
-    setOriginSuggestions([]);
     
     try {
+      // 2-second mandatory wait to ensure quota sync and stabilize state
+      await new Promise(resolve => setTimeout(resolve, 2000));
+
       // Parallelize analysis and image fetching for speed
       const [data, img] = await Promise.all([
         getTravelAnalysis(targetDest, targetOrigin),
@@ -180,31 +152,6 @@ export default function App() {
                 <X className="h-4 w-4" />
               </button>
             )}
-            
-            <AnimatePresence>
-              {originSuggestions.length > 0 && (
-                <motion.div 
-                  initial={{ opacity: 0, y: -10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -10 }}
-                  className="absolute left-0 right-0 top-full mt-2 bg-[#0A0A0A] border border-white/10 rounded-2xl overflow-hidden z-50 shadow-2xl"
-                >
-                  {originSuggestions.map(s => (
-                    <button
-                      key={s}
-                      type="button"
-                      onClick={() => {
-                        setOrigin(s);
-                        setOriginSuggestions([]);
-                      }}
-                      className="w-full text-left px-5 py-3 text-xs font-mono uppercase tracking-widest hover:bg-brand-primary/20 hover:text-brand-primary transition-colors border-b border-white/5 last:border-none"
-                    >
-                      {s}
-                    </button>
-                  ))}
-                </motion.div>
-              )}
-            </AnimatePresence>
           </div>
           
           <div className="hidden sm:block w-[1px] h-8 bg-white/5 self-center" />
@@ -229,31 +176,6 @@ export default function App() {
                 <X className="h-4 w-4" />
               </button>
             )}
-
-            <AnimatePresence>
-              {destSuggestions.length > 0 && (
-                <motion.div 
-                  initial={{ opacity: 0, y: -10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -10 }}
-                  className="absolute left-0 right-0 top-full mt-2 bg-[#0A0A0A] border border-white/10 rounded-2xl overflow-hidden z-50 shadow-2xl"
-                >
-                  {destSuggestions.map(s => (
-                    <button
-                      key={s}
-                      type="button"
-                      onClick={() => {
-                        setDestination(s);
-                        setDestSuggestions([]);
-                      }}
-                      className="w-full text-left px-5 py-3 text-xs font-mono uppercase tracking-widest hover:bg-brand-primary/20 hover:text-brand-primary transition-colors border-b border-white/5 last:border-none"
-                    >
-                      {s}
-                    </button>
-                  ))}
-                </motion.div>
-              )}
-            </AnimatePresence>
           </div>
 
           <button 
