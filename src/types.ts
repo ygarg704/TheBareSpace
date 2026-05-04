@@ -27,7 +27,6 @@ export interface TravelAnalysis {
   proTip: string;
   estimatedDays: number;
   itinerary: ItineraryDay[];
-  full14DayItinerary: ItineraryDay[];
   similarDestinations: {
     name: string;
     reason: string;

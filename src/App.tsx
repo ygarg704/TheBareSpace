@@ -21,6 +21,7 @@ export default function App() {
   const [destination, setDestination] = useState('');
   const [origin, setOrigin] = useState('');
   const [loading, setLoading] = useState(false);
+  const [itineraryLoading, setItineraryLoading] = useState(false);
   const [analysis, setAnalysis] = useState<TravelAnalysis | null>(null);
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -46,20 +47,37 @@ export default function App() {
   const [visibleDays, setVisibleDays] = useState(7);
   const [localItinerary, setLocalItinerary] = useState<ItineraryDay[]>([]);
 
-  // Handle itinerary updates locally when days change (Zero API hits)
+  // Handle itinerary reload when days change
   useEffect(() => {
-    if (!analysis) return;
+    if (!analysis || !destination) return;
 
-    // Use full14DayItinerary if available, fallback to initial itinerary
-    const masterSource = analysis.full14DayItinerary || analysis.itinerary;
-    if (masterSource && masterSource.length > 0) {
-      // Return a slice based on visibleDays
-      setLocalItinerary(masterSource.slice(0, visibleDays));
-    }
-  }, [visibleDays, analysis]);
+    const reloadItinerary = async () => {
+      setItineraryLoading(true);
+      try {
+        const newItinerary = await getOptimizedItinerary(destination, visibleDays);
+        setLocalItinerary(newItinerary);
+      } catch (err) {
+        console.error("Itinerary re-optimization failed", err);
+      } finally {
+        setItineraryLoading(false);
+      }
+    };
+
+    const timer = setTimeout(() => {
+      // Only reload if the day count is different from what we currently have
+      if (localItinerary.length !== visibleDays) {
+        reloadItinerary();
+      }
+    }, 2000); // 2 second debounce to prevent rapid sequential hits
+
+    return () => clearTimeout(timer);
+  }, [visibleDays, destination, analysis]);
 
   const triggerAnalysis = async (targetDest: string, targetOrigin: string) => {
-    if (!targetDest.trim() || !targetOrigin.trim()) return;
+    if (!targetDest.trim() || !targetOrigin.trim()) {
+      setError('VALIDATION ERROR: Please provide both an Origin and a Target destination.');
+      return;
+    }
 
     setLoading(true);
     setError(null);
@@ -102,6 +120,9 @@ export default function App() {
 
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (loading) return;
+    
+    console.log(`[UI] Initiating Nomad Intel Scan for: ${destination} from ${origin}`);
     triggerAnalysis(destination, origin);
   };
 
@@ -337,6 +358,14 @@ export default function App() {
                     </div>
                     
                     <div className="space-y-4 relative">
+                      {itineraryLoading && (
+                        <div className="absolute inset-0 z-10 bg-black/40 backdrop-blur-[2px] flex items-center justify-center rounded-2xl">
+                          <div className="flex items-center gap-3 bg-black border border-white/10 px-6 py-3 rounded-full">
+                            <Loader2 className="h-4 w-4 animate-spin text-brand-primary" />
+                            <span className="small-caps">Re-Optimizing Destination Logic...</span>
+                          </div>
+                        </div>
+                      )}
                       {localItinerary.map((day) => (
                         <motion.div 
                           key={day.day} 
