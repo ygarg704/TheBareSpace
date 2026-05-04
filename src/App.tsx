@@ -78,10 +78,10 @@ export default function App() {
     setImageUrl(null);
     
     try {
-      // 2-second mandatory wait to ensure quota sync and stabilize state
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      // 3-second mandatory cooling phase to respect API nodes
+      await new Promise(resolve => setTimeout(resolve, 3000));
 
-      // Parallelize analysis and image fetching for speed
+      // Parallelize analysis and image fetching
       const [data, img] = await Promise.all([
         getTravelAnalysis(targetDest, targetOrigin),
         getDestinationImage(targetDest).catch(err => {
